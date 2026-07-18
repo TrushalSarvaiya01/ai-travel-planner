@@ -80,25 +80,29 @@ body {
   }
 
   .section-shell {
-    @apply mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
   }
 
   .section-title {
-    @apply text-3xl font-semibold tracking-tight text-ink sm:text-4xl lg:text-5xl;
+    @apply text-[1.75rem] font-semibold tracking-tight text-ink sm:text-4xl lg:text-5xl;
   }
 
   .section-copy {
     @apply text-base leading-7 text-slate-600 sm:text-lg;
   }
+
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
 }
 
 @layer components {
   .button-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary via-secondary to-accent px-6 py-3 text-sm font-semibold text-white shadow-glow transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_26px_70px_-20px_rgba(79,70,229,0.65)];
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary via-secondary to-accent px-5 py-3 text-sm font-semibold text-white shadow-glow transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_26px_70px_-20px_rgba(79,70,229,0.65)] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0 sm:px-6;
   }
 
   .button-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/80 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white;
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white sm:px-6;
   }
 
   .card-lift {

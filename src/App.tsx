@@ -7,16 +7,24 @@ import {
   Coins,
   Compass,
   Cpu,
+  Download,
   Files,
   Globe2,
   Hotel,
   Layers3,
+  MapPin,
+  Moon,
+  Pencil,
   PlaneTakeoff,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
+  Sun,
+  Sunset,
   Ticket,
   TrainFront,
   Store,
+  UtensilsCrossed,
   Wallet,
   Wind,
   Zap,
@@ -28,6 +36,7 @@ import type { LucideIcon } from 'lucide-react';
 import Reveal from './components/Reveal';
 import PlanningModal, { type PlanningFormValues } from './components/PlanningModal';
 import TravelIllustration from './components/TravelIllustration';
+import PlannerResultPanel from './components/PlannerResultPanel';
 import {
   generateTripItinerary,
   type TripPlannerInput,
@@ -35,6 +44,13 @@ import {
 } from './services/gemini';
 
 type PlannerFormState = PlanningFormValues;
+type AppMode = 'home' | 'planner';
+
+interface AppProps {
+  mode?: AppMode;
+}
+
+const plannerStorageKey = 'travel-planner-ai-state';
 
 const initialPlannerForm: PlannerFormState = {
   origin: 'Ahmedabad',
@@ -116,25 +132,106 @@ const travelTips = [
   'Booking a little earlier can unlock better hotels, transport flow, and a calmer pace.',
 ];
 
-function App() {
+function App({ mode = 'home' }: AppProps) {
   const [loaded, setLoaded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [plannerLoading, setPlannerLoading] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
-  const [plannerResult, setPlannerResult] = useState<TripPlannerResult | null>(null);
-  const [plannerForm, setPlannerForm] = useState<PlannerFormState>(initialPlannerForm);
+  const [plannerResult, setPlannerResult] = useState<TripPlannerResult | null>(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    try {
+      const saved = window.sessionStorage.getItem(plannerStorageKey);
+      if (!saved) {
+        return null;
+      }
+
+      const parsed = JSON.parse(saved) as {
+        plannerResult?: TripPlannerResult | null;
+        plannerError?: string | null;
+        lastRequest?: TripPlannerInput | null;
+        plannerForm?: PlannerFormState;
+      };
+
+      return parsed.plannerResult ?? null;
+    } catch {
+      return null;
+    }
+  });
+  const [plannerForm, setPlannerForm] = useState<PlannerFormState>(() => {
+    if (typeof window === 'undefined') {
+      return initialPlannerForm;
+    }
+
+    try {
+      const saved = window.sessionStorage.getItem(plannerStorageKey);
+      if (!saved) {
+        return initialPlannerForm;
+      }
+
+      const parsed = JSON.parse(saved) as {
+        plannerForm?: PlannerFormState;
+      };
+
+      return parsed.plannerForm ?? initialPlannerForm;
+    } catch {
+      return initialPlannerForm;
+    }
+  });
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof TripPlannerInput, string>>>({});
-  const [lastRequest, setLastRequest] = useState<TripPlannerInput | null>(null);
+  const [lastRequest, setLastRequest] = useState<TripPlannerInput | null>(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    try {
+      const saved = window.sessionStorage.getItem(plannerStorageKey);
+      if (!saved) {
+        return null;
+      }
+
+      const parsed = JSON.parse(saved) as {
+        lastRequest?: TripPlannerInput | null;
+      };
+
+      return parsed.lastRequest ?? null;
+    } catch {
+      return null;
+    }
+  });
   const [loadingStage, setLoadingStage] = useState(0);
   const [loadingTip, setLoadingTip] = useState(0);
   const [loadingComplete, setLoadingComplete] = useState(false);
+  const [currentMode, setCurrentMode] = useState<AppMode>(mode);
   const cancellationRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setLoaded(true), 900);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    setCurrentMode(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      plannerStorageKey,
+      JSON.stringify({
+        plannerResult,
+        plannerError,
+        plannerForm,
+        lastRequest,
+      }),
+    );
+  }, [plannerError, plannerForm, plannerResult, lastRequest]);
 
   useEffect(() => {
     if (!plannerLoading) {
@@ -160,6 +257,7 @@ function App() {
   }, [plannerLoading]);
 
   const openPlanner = () => {
+    setMenuOpen(false);
     setPlannerError(null);
     setPlannerOpen(true);
   };
@@ -176,9 +274,17 @@ function App() {
     setMenuOpen(false);
   };
 
+  const navigateToRoute = (path: string) => {
+    window.history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   const navigateToContact = () => {
-    // Navigate to a dedicated contact page
-    window.location.href = '/contact';
+    navigateToRoute('/contact');
+  };
+
+  const navigateToPlanner = () => {
+    navigateToRoute('/planner');
   };
 
   const updatePlannerField = (field: keyof PlannerFormState, value: string) => {
@@ -219,17 +325,11 @@ function App() {
       }
 
       setPlannerResult(result);
-      // Open itinerary in a new page/tab for a full-page view
-      try {
-        openItineraryInNewPage(result);
-      } catch {
-        // ignore any popup blockers or errors — result remains available in-app
-      }
       setLoadingComplete(true);
       window.setTimeout(() => {
         setPlannerLoading(false);
         setLoadingComplete(false);
-        window.setTimeout(() => smoothScroll('deliverables'), 50);
+        navigateToRoute('/planner');
       }, 1200);
     } catch (error) {
       if (cancellationRef.current) {
@@ -262,17 +362,11 @@ function App() {
       }
 
       setPlannerResult(result);
-      // Open itinerary in a new page/tab for a full-page view
-      try {
-        openItineraryInNewPage(result);
-      } catch {
-        // ignore any popup blockers or errors — result remains available in-app
-      }
       setLoadingComplete(true);
       window.setTimeout(() => {
         setPlannerLoading(false);
         setLoadingComplete(false);
-        window.setTimeout(() => smoothScroll('deliverables'), 50);
+        navigateToRoute('/planner');
       }, 1200);
     } catch (error) {
       if (cancellationRef.current) {
@@ -286,79 +380,6 @@ function App() {
       setLoadingComplete(false);
     }
   };
-
-  function createItineraryHtml(result: TripPlannerResult) {
-    const escapeHtml = (s: string) =>
-      String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-    const daysHtml = result.dailyItinerary
-      .map((day) => {
-        return `
-          <section style="margin-bottom:18px">
-            <h3 style="margin:6px 0;font-size:18px">Day ${day.day} · ${escapeHtml(day.title)}</h3>
-            <div><strong>Morning</strong>: ${escapeHtml(day.morning)}</div>
-            <div><strong>Afternoon</strong>: ${escapeHtml(day.afternoon)}</div>
-            <div><strong>Evening</strong>: ${escapeHtml(day.evening)}</div>
-            <div><strong>Dinner</strong>: ${escapeHtml(day.dinner)}</div>
-          </section>
-        `;
-      })
-      .join('\n');
-
-    const budgetHtml = result.budgetBreakdown
-      .map((b) => `<li>${escapeHtml(b.category)} — $${Number(b.estimate).toLocaleString()} · ${escapeHtml(b.note)}</li>`)
-      .join('\n');
-
-    const packingHtml = result.packingChecklist.map((p) => `<li>${escapeHtml(p)}</li>`).join('\n');
-
-    return `
-      <!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <title>${escapeHtml(result.tripTitle)}</title>
-        <style>
-          body{font-family:Inter,system-ui,Segoe UI,Roboto,-apple-system,Helvetica,Arial;margin:20px;color:#0f172a}
-          h1{font-size:28px;margin-bottom:4px}
-          h2{font-size:16px;margin-top:18px}
-          section{padding:10px 0;border-bottom:1px solid #eee}
-        </style>
-      </head>
-      <body>
-        <h1>${escapeHtml(result.tripTitle)}</h1>
-        <p style="color:#475569">${escapeHtml(result.summary)}</p>
-        <p><strong>Destination:</strong> ${escapeHtml(result.destination)}</p>
-        <p><strong>Recommended transport:</strong> ${escapeHtml(result.recommendedTransport)}</p>
-
-        <h2>Daily itinerary</h2>
-        ${daysHtml}
-
-        <h2>Budget breakdown</h2>
-        <ul>${budgetHtml}</ul>
-
-        <h2>Packing checklist</h2>
-        <ul>${packingHtml}</ul>
-
-        <p style="margin-top:28px;color:#64748b;font-size:13px">Generated by PromptWars</p>
-      </body>
-      </html>
-    `;
-  }
-
-  function openItineraryInNewPage(result: TripPlannerResult) {
-    const html = createItineraryHtml(result);
-    const newWindow = window.open('', '_blank');
-    if (!newWindow) {
-      throw new Error('Unable to open new window');
-    }
-    newWindow.document.open();
-    newWindow.document.write(html);
-    newWindow.document.close();
-  }
 
   const exportPlannerPdf = () => {
     if (!plannerResult) {
@@ -488,6 +509,79 @@ function App() {
     [],
   );
 
+  if (currentMode === 'planner') {
+    return (
+      <div className="min-h-screen overflow-x-hidden bg-hero-radial text-ink">
+        <header className="sticky top-0 z-50 border-b border-white/60 bg-white/60 backdrop-blur-2xl">
+          <div className="section-shell flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-5">
+            <button type="button" onClick={() => navigateToRoute('/')} className="inline-flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-secondary to-accent text-white shadow-glow">
+                <PlaneTakeoff className="h-5 w-5" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold tracking-tight text-ink">Travel Planner AI</p>
+                <p className="text-xs text-slate-500">Your personalized trip workspace</p>
+              </div>
+            </button>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button type="button" onClick={() => navigateToRoute('/')} className="button-secondary px-4 py-2.5 text-sm">
+                Back home
+              </button>
+              <button type="button" onClick={openPlanner} className="button-secondary px-4 py-2.5 text-sm">
+                Edit plan
+              </button>
+              <button type="button" onClick={retryPlanner} className="button-primary px-4 py-2.5 text-sm">
+                Regenerate
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="section-shell py-10 sm:py-14 lg:py-16">
+          <div className="mx-auto max-w-7xl rounded-[32px] border border-white/80 bg-white/75 p-6 shadow-[0_30px_100px_-40px_rgba(15,23,42,0.22)] backdrop-blur-2xl sm:p-8 lg:p-10">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-primary">
+                  <Sparkles className="h-3.5 w-3.5" /> Planner workspace
+                </div>
+                <h1 className="mt-4 text-3xl font-black tracking-tight text-ink sm:text-4xl lg:text-5xl">
+                  Your itinerary is ready to review and export.
+                </h1>
+                <p className="mt-4 text-sm leading-7 text-slate-600 sm:text-base">
+                  Everything is gathered in one polished planner view so you can edit, regenerate, or download your trip plan without losing context.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <button type="button" onClick={openPlanner} className="button-secondary px-4 py-2.5 text-sm">
+                  Edit plan
+                </button>
+                <button type="button" onClick={exportPlannerPdf} className="button-secondary px-4 py-2.5 text-sm">
+                  Export PDF
+                </button>
+                <button type="button" onClick={retryPlanner} className="button-primary px-4 py-2.5 text-sm">
+                  Regenerate
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <PlannerResultPanel
+              loading={plannerLoading}
+              error={plannerError}
+              result={plannerResult}
+              plannerForm={plannerForm}
+              onRetry={retryPlanner}
+              onOpenPlanner={openPlanner}
+              onExportPdf={exportPlannerPdf}
+            />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-hero-radial text-ink">
       <AnimatePresence>
@@ -496,27 +590,27 @@ function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 px-4 py-8 backdrop-blur-xl"
+            className="fixed inset-0 z-[90] flex items-end justify-center overflow-y-auto bg-slate-950/70 px-0 py-0 backdrop-blur-xl sm:items-center sm:px-4 sm:py-8"
           >
             <motion.div
               initial={{ y: 20, scale: 0.98 }}
               animate={{ y: 0, scale: 1 }}
               exit={{ y: 12, scale: 0.97 }}
-              className="relative w-full max-w-3xl overflow-hidden rounded-[36px] border border-white/70 bg-white/80 p-6 shadow-[0_40px_120px_-40px_rgba(15,23,42,0.55)] sm:p-8"
+              className="relative my-0 max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] border border-white/70 bg-white/90 p-4 shadow-[0_40px_120px_-40px_rgba(15,23,42,0.55)] sm:my-auto sm:rounded-[36px] sm:p-8"
             >
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(79,70,229,0.16),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(6,182,212,0.14),transparent_45%)]" />
               <div className="relative">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary">Premium planning flow</p>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Crafting your travel experience</h2>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary sm:text-xs sm:tracking-[0.28em]">Premium planning flow</p>
+                    <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink sm:text-3xl">Crafting your travel experience</h2>
                   </div>
                   <button type="button" onClick={cancelPlanner} className="button-secondary px-4 py-2.5 text-sm">
                     Cancel
                   </button>
                 </div>
 
-                <div className="mt-8 rounded-[28px] border border-slate-200/70 bg-white/80 p-5 shadow-sm">
+                <div className="mt-5 rounded-[22px] border border-slate-200/70 bg-white/80 p-4 shadow-sm sm:mt-8 sm:rounded-[28px] sm:p-5">
                   <div className="flex items-center justify-between text-sm font-medium text-slate-600">
                     <span>Progress</span>
                     <span>{Math.round(((loadingStage + 1) / loadingMessages.length) * 100)}%</span>
@@ -537,22 +631,22 @@ function App() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.25 }}
-                      className="mt-5 text-lg font-semibold text-ink"
+                      className="mt-4 text-base font-semibold text-ink sm:mt-5 sm:text-lg"
                     >
                       {loadingMessages[loadingStage]}
                     </motion.div>
                   </AnimatePresence>
                 </div>
 
-                <div className="mt-6 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-                  <div className="rounded-[28px] border border-slate-200/70 bg-white/80 p-5 shadow-sm">
+                <div className="mt-4 grid gap-4 lg:mt-6 lg:grid-cols-[1.05fr_0.95fr]">
+                  <div className="rounded-[22px] border border-slate-200/70 bg-white/80 p-4 shadow-sm sm:rounded-[28px] sm:p-5">
                     <p className="text-sm font-semibold text-primary">Planning checklist</p>
                     <div className="mt-4 space-y-3">
                       {loadingMessages.map((message, index) => {
                         const state = index < loadingStage ? 'complete' : index === loadingStage ? 'active' : 'upcoming';
                         return (
                           <div key={message} className={`flex items-center gap-3 rounded-[18px] border px-3 py-3 ${state === 'complete' ? 'border-emerald-200 bg-emerald-50/80' : state === 'active' ? 'border-primary/20 bg-primary/10' : 'border-slate-200 bg-slate-50/70'}`}>
-                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${state === 'complete' ? 'bg-emerald-500 text-white' : state === 'active' ? 'bg-primary text-white' : 'bg-slate-200 text-slate-500'}`}>
+                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${state === 'complete' ? 'bg-emerald-500 text-white' : state === 'active' ? 'bg-primary text-white' : 'bg-slate-200 text-slate-500'}`}>
                               {state === 'complete' ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
                             </div>
                             <span className={`text-sm font-medium ${state === 'upcoming' ? 'text-slate-500' : 'text-slate-800'}`}>{message}</span>
@@ -562,7 +656,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="rounded-[28px] border border-slate-200/70 bg-[linear-gradient(135deg,rgba(79,70,229,0.08),rgba(255,255,255,0.9))] p-5 shadow-sm">
+                  <div className="rounded-[22px] border border-slate-200/70 bg-[linear-gradient(135deg,rgba(79,70,229,0.08),rgba(255,255,255,0.9))] p-4 shadow-sm sm:rounded-[28px] sm:p-5">
                     <p className="text-sm font-semibold text-primary">Travel tip</p>
                     <AnimatePresence mode="wait">
                       <motion.p
@@ -571,13 +665,13 @@ function App() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.25 }}
-                        className="mt-3 text-base leading-7 text-slate-700"
+                        className="mt-3 text-sm leading-7 text-slate-700 sm:text-base"
                       >
                         {travelTips[loadingTip]}
                       </motion.p>
                     </AnimatePresence>
 
-                    <div className="mt-6 space-y-3">
+                    <div className="mt-5 space-y-3 sm:mt-6">
                       {["Personalized itinerary", "Budget-aware suggestions", "Premium pacing"].map((item) => (
                         <div key={item} className="flex items-center gap-2 text-sm text-slate-600">
                           <div className="h-2 w-2 rounded-full bg-primary" />
@@ -589,8 +683,8 @@ function App() {
                 </div>
 
                 {loadingComplete ? (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6 flex items-center justify-center rounded-[24px] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                    <Check className="mr-2 h-4 w-4" /> Success — your itinerary is ready and will appear shortly.
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-5 flex items-center justify-center rounded-[20px] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 sm:mt-6 sm:rounded-[24px]">
+                    <Check className="mr-2 h-4 w-4 shrink-0" /> Success — your itinerary is ready and will appear shortly.
                   </motion.div>
                 ) : null}
               </div>
@@ -605,18 +699,18 @@ function App() {
       </div>
 
       <header className="sticky top-0 z-50 border-b border-white/60 bg-white/55 backdrop-blur-2xl">
-        <div className="section-shell flex h-20 items-center justify-between gap-4">
+        <div className="section-shell flex h-16 items-center justify-between gap-3 sm:h-20 sm:gap-4">
           <button
             type="button"
             onClick={() => smoothScroll('hero')}
-            className="group inline-flex items-center gap-3"
+            className="group inline-flex min-w-0 items-center gap-2.5 sm:gap-3"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-secondary to-accent text-white shadow-glow">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-secondary to-accent text-white shadow-glow sm:h-11 sm:w-11">
               <PlaneTakeoff className="h-5 w-5" />
             </div>
-            <div className="text-left">
-              <p className="text-sm font-semibold tracking-tight text-ink">Travel Planner AI</p>
-              <p className="text-xs text-slate-500">AI-Powered Intelligent Travel Planning</p>
+            <div className="min-w-0 text-left">
+              <p className="truncate text-sm font-semibold tracking-tight text-ink">Travel Planner AI</p>
+              <p className="hidden text-xs text-slate-500 sm:block">AI-Powered Intelligent Travel Planning</p>
             </div>
           </button>
 
@@ -646,14 +740,14 @@ function App() {
             type="button"
             aria-label="Open menu"
             onClick={() => setMenuOpen((value) => !value)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 text-slate-700 shadow-sm transition hover:bg-white lg:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/80 bg-white/80 text-slate-700 shadow-sm transition hover:bg-white sm:h-11 sm:w-11 lg:hidden"
           >
             <ChevronDown className={`h-5 w-5 transition ${menuOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
 
         {menuOpen ? (
-          <div className="border-t border-white/70 bg-white/85 px-5 pb-5 pt-3 backdrop-blur-2xl lg:hidden">
+          <div className="border-t border-white/70 bg-white/85 px-4 pb-4 pt-3 backdrop-blur-2xl sm:px-5 sm:pb-5 lg:hidden">
             <div className="section-shell flex flex-col gap-2 px-0">
               {navItems.map((item) => (
                 <button
@@ -665,33 +759,46 @@ function App() {
                   {item.label}
                 </button>
               ))}
+              <div className="mt-2 grid gap-2 md:hidden">
+                <button type="button" onClick={() => smoothScroll('overview')} className="button-secondary w-full">
+                  Learn More
+                </button>
+                <button
+                  type="button"
+                  onClick={openPlanner}
+                  disabled={plannerLoading}
+                  className={`button-primary w-full ${plannerLoading ? 'cursor-not-allowed opacity-70' : ''}`}
+                >
+                  {plannerLoading ? 'Planning…' : 'Start Planning'}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
       </header>
 
       <main>
-        <section id="hero" className="relative overflow-hidden pt-8 sm:pt-12 lg:pt-16">
-          <div className="section-shell grid items-center gap-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-10">
+        <section id="hero" className="relative overflow-hidden pt-4 sm:pt-8 lg:pt-10">
+          <div className="section-shell grid items-center gap-10 sm:gap-16 lg:grid-cols-[1.02fr_0.98fr] lg:gap-10">
             <Reveal className="relative z-10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-primary shadow-sm backdrop-blur-xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/80 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-primary shadow-sm backdrop-blur-xl sm:px-4 sm:text-xs sm:tracking-[0.28em]">
                   <Sparkles className="h-3.5 w-3.5" /> AI TRAVEL PLATFORM
               </div>
 
-              <h1 className="mt-6 max-w-3xl text-5xl font-black tracking-[-0.05em] text-ink sm:text-6xl lg:text-7xl">
+              <h1 className="mt-5 max-w-3xl text-4xl font-black tracking-[-0.05em] text-ink sm:mt-6 sm:text-6xl lg:text-7xl">
                 AI Travel Planner
               </h1>
 
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:mt-6 sm:text-xl sm:leading-8">
                 Create personalized travel experiences in seconds using AI. Generate smart itineraries, budget
                 estimates, destination recommendations, and packing lists—all in one place.
               </p>
 
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <button type="button" onClick={openPlanner} disabled={plannerLoading} className={`button-primary ${plannerLoading ? 'cursor-not-allowed opacity-70' : ''}`}>
+              <div className="mt-7 flex flex-col gap-3 sm:mt-8 sm:flex-row">
+                <button type="button" onClick={openPlanner} disabled={plannerLoading} className={`button-primary w-full sm:w-auto ${plannerLoading ? 'cursor-not-allowed opacity-70' : ''}`}>
                   {plannerLoading ? 'Planning…' : 'Start Planning'} <ArrowRight className="h-4 w-4" />
                 </button>
-                <button type="button" onClick={() => smoothScroll('overview')} className="button-secondary">
+                <button type="button" onClick={() => smoothScroll('overview')} className="button-secondary w-full sm:w-auto">
                   Learn More <ChevronDown className="h-4 w-4" />
                 </button>
               </div>
@@ -741,7 +848,7 @@ function App() {
           </div>
         </section>
 
-        <section id="overview" className="section-shell mt-24 sm:mt-28 lg:mt-32">
+        <section id="overview" className="section-shell mt-16 sm:mt-20 lg:mt-24">
           <Reveal>
             <div className="grid gap-10 rounded-[36px] border border-white/70 bg-white/60 p-6 shadow-[0_40px_120px_-50px_rgba(15,23,42,0.22)] backdrop-blur-2xl lg:grid-cols-[0.95fr_1.05fr] lg:p-8">
               <div className="relative overflow-hidden rounded-[30px] bg-[linear-gradient(135deg,rgba(79,70,229,0.1),rgba(6,182,212,0.08),rgba(255,255,255,0.88))] p-6">
@@ -807,7 +914,7 @@ function App() {
           </Reveal>
         </section>
 
-        <section id="features" className="section-shell mt-24 sm:mt-28 lg:mt-32">
+        <section id="features" className="section-shell mt-16 sm:mt-20 lg:mt-24">
           <Reveal>
             <div className="max-w-3xl">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-primary shadow-sm backdrop-blur-xl">
@@ -834,32 +941,53 @@ function App() {
           </div>
         </section>
 
-        <section id="deliverables" className="section-shell mt-24 sm:mt-28 lg:mt-32">
+        <section id="deliverables" className="section-shell mt-16 sm:mt-20 lg:mt-24">
           <Reveal>
             <div className="max-w-3xl">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-primary shadow-sm backdrop-blur-xl">
-                Project Deliverables
+                {plannerResult ? 'Your itinerary' : 'Project Deliverables'}
               </div>
-              <h2 className="section-title mt-5">A six-step product flow designed like a high-end launch story.</h2>
+              <h2 className="section-title mt-5">
+                {plannerResult
+                  ? 'Your personalized trip plan is ready to explore and export.'
+                  : 'A six-step product flow designed like a high-end launch story.'}
+              </h2>
             </div>
           </Reveal>
 
-          <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_0.85fr]">
+          <div
+            className={`mt-8 grid gap-5 lg:mt-10 ${
+              plannerResult || plannerLoading
+                ? 'lg:grid-cols-1 xl:grid-cols-[0.72fr_1.28fr]'
+                : 'lg:grid-cols-[1fr_0.85fr]'
+            }`}
+          >
             <Reveal>
-              <div className="relative rounded-[34px] border border-white/70 bg-white/60 p-6 shadow-[0_30px_90px_-38px_rgba(15,23,42,0.22)] backdrop-blur-2xl">
-                <div className="absolute left-[39px] top-10 bottom-10 w-px bg-gradient-to-b from-primary via-secondary to-accent opacity-40" />
-                <div className="space-y-5">
+              <div
+                className={`relative rounded-[28px] border border-white/70 bg-white/60 p-4 shadow-[0_30px_90px_-38px_rgba(15,23,42,0.22)] backdrop-blur-2xl sm:rounded-[34px] sm:p-6 ${
+                  plannerResult || plannerLoading ? 'order-2 xl:order-1' : ''
+                }`}
+              >
+                <div className="absolute left-[31px] top-8 bottom-8 w-px bg-gradient-to-b from-primary via-secondary to-accent opacity-40 sm:left-[39px] sm:top-10 sm:bottom-10" />
+                <div className="space-y-3 sm:space-y-5">
                   {deliverables.map((item, index) => (
-                    <div key={item.step} className="relative flex gap-5 rounded-[28px] p-4 transition hover:bg-white/70">
-                      <div className={`relative z-10 flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${item.accent} shadow-sm`}>
-                        <item.icon className="h-6 w-6" />
+                    <div
+                      key={item.step}
+                      className="relative flex gap-3 rounded-[22px] p-3 transition hover:bg-white/70 sm:gap-5 sm:rounded-[28px] sm:p-4"
+                    >
+                      <div
+                        className={`relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-14 sm:w-14 ${item.accent} shadow-sm`}
+                      >
+                        <item.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                       </div>
-                      <div className="flex-1 pt-1">
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold tracking-[0.28em] text-slate-400">{item.step}</span>
-                          <span className="text-sm font-medium text-slate-500">Step {index + 1}</span>
+                      <div className="min-w-0 flex-1 pt-0.5 sm:pt-1">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                          <span className="text-xs font-bold tracking-[0.28em] text-slate-400 sm:text-sm">
+                            {item.step}
+                          </span>
+                          <span className="text-xs font-medium text-slate-500 sm:text-sm">Step {index + 1}</span>
                         </div>
-                        <p className="mt-2 text-lg font-semibold text-ink">{item.title}</p>
+                        <p className="mt-1.5 text-base font-semibold text-ink sm:mt-2 sm:text-lg">{item.title}</p>
                       </div>
                     </div>
                   ))}
@@ -868,14 +996,17 @@ function App() {
             </Reveal>
 
             <Reveal delayClassName="delay-150">
-              <PlannerResultPanel
-                loading={plannerLoading}
-                error={plannerError}
-                result={plannerResult}
-                onRetry={retryPlanner}
-                onOpenPlanner={openPlanner}
-                onExportPdf={exportPlannerPdf}
-              />
+              <div className={plannerResult || plannerLoading ? 'order-1 xl:order-2' : ''}>
+                <PlannerResultPanel
+                  loading={plannerLoading}
+                  error={plannerError}
+                  result={plannerResult}
+                  plannerForm={plannerForm}
+                  onRetry={retryPlanner}
+                  onOpenPlanner={openPlanner}
+                  onExportPdf={exportPlannerPdf}
+                />
+              </div>
             </Reveal>
           </div>
         </section>
@@ -1000,193 +1131,7 @@ function GlassMetric({ title, value, description }: { title: string; value: stri
   );
 }
 
-function PlannerResultPanel({
-  loading,
-  error,
-  result,
-  onRetry,
-  onOpenPlanner,
-  onExportPdf,
-}: {
-  loading: boolean;
-  error: string | null;
-  result: TripPlannerResult | null;
-  onRetry: () => void;
-  onOpenPlanner: () => void;
-  onExportPdf: () => void;
-}) {
-  if (loading) {
-    return <PlannerSkeleton />;
-  }
-
-  if (result) {
-    return (
-      <div className="grid gap-5 rounded-[34px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.95))] p-6 shadow-[0_30px_90px_-38px_rgba(15,23,42,0.2)] backdrop-blur-2xl">
-        <div className="rounded-[28px] bg-gradient-to-br from-primary/10 via-white to-accent/10 p-6">
-          <p className="text-sm font-semibold text-primary">Generated itinerary</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-tight text-ink">{result.tripTitle}</h3>
-          <p className="mt-3 text-sm leading-7 text-slate-600">{result.summary}</p>
-          <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-            <span className="rounded-full bg-white/80 px-3 py-1 shadow-sm">{result.destination}</span>
-            <span className="rounded-full bg-white/80 px-3 py-1 shadow-sm">{result.recommendedTransport}</span>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <section className="rounded-[26px] border border-slate-200/70 bg-white/80 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Daily itinerary</p>
-            <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1">
-              {result.dailyItinerary.map((day) => (
-                <article key={day.day} className="rounded-[20px] border border-slate-100 bg-slate-50/80 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-ink">Day {day.day} · {day.title}</p>
-                  </div>
-                  <div className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
-                    <p><span className="font-semibold text-slate-800">Morning:</span> {day.morning}</p>
-                    <p><span className="font-semibold text-slate-800">Afternoon:</span> {day.afternoon}</p>
-                    <p><span className="font-semibold text-slate-800">Evening:</span> {day.evening}</p>
-                    <p><span className="font-semibold text-slate-800">Dinner:</span> {day.dinner}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[26px] border border-slate-200/70 bg-white/80 p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Budget + packing</p>
-            <div className="mt-3 space-y-3">
-              {result.budgetBreakdown.map((item) => (
-                <div key={item.category} className="rounded-[18px] bg-slate-50/90 px-3 py-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-sm font-semibold text-ink">{item.category}</p>
-                    <p className="text-sm font-semibold text-primary">${item.estimate.toLocaleString()}</p>
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.note}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 rounded-[20px] border border-slate-100 bg-slate-50/90 p-4">
-              <p className="text-sm font-semibold text-ink">Packing checklist</p>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-                {result.packingChecklist.map((item) => (
-                  <li key={item} className="flex items-start gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-primary" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={onOpenPlanner} className="button-secondary flex-1 min-w-[140px]">
-                Edit inputs
-              </button>
-              <button type="button" onClick={onRetry} className="button-primary flex-1 min-w-[140px]">
-                Regenerate
-              </button>
-              <button type="button" onClick={onExportPdf} className="button-secondary flex-1 min-w-[140px]">
-                Export PDF
-              </button>
-            </div>
-          </section>
-        </div>
-
-        <div className="rounded-[26px] border border-slate-200/70 bg-white/80 p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Smart tips</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {result.smartTips.map((tip) => (
-              <div key={tip} className="rounded-[18px] bg-slate-50/90 px-3 py-3 text-sm leading-6 text-slate-600">
-                {tip}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid gap-5 rounded-[34px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(248,250,252,0.92))] p-6 shadow-[0_30px_90px_-38px_rgba(15,23,42,0.2)] backdrop-blur-2xl">
-      <div className="rounded-[28px] bg-gradient-to-br from-primary/10 via-white to-accent/10 p-6">
-        <p className="text-sm font-semibold text-primary">Launch-ready output</p>
-        <p className="mt-2 text-2xl font-semibold tracking-tight text-ink">Built to feel like a polished, shippable product demo.</p>
-        <p className="mt-3 text-sm leading-7 text-slate-600">
-          The timeline clarifies the value flow from preference capture to shareable output, so the product narrative feels premium and easy to understand.
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {[
-          { icon: ShieldCheck, title: 'Trust-first UX', copy: 'Clean states and reassuring microcopy.' },
-          { icon: Layers3, title: 'Reusable system', copy: 'Composable cards and motion-aware sections.' },
-        ].map((item) => (
-          <div key={item.title} className="glass rounded-[26px] p-5">
-            <item.icon className="h-6 w-6 text-primary" />
-            <p className="mt-3 text-base font-semibold text-ink">{item.title}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{item.copy}</p>
-          </div>
-        ))}
-      </div>
-
-      {error ? (
-        <div className="rounded-[22px] border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          <p className="font-semibold">Generation failed</p>
-          <p className="mt-1 leading-6">{error}</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" onClick={onOpenPlanner} className="button-secondary">
-              Fix inputs
-            </button>
-            <button type="button" onClick={onRetry} className="button-primary">
-              Retry
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-
-function PlannerSkeleton() {
-  return (
-    <div className="grid gap-5 rounded-[34px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(248,250,252,0.92))] p-6 shadow-[0_30px_90px_-38px_rgba(15,23,42,0.2)] backdrop-blur-2xl">
-      <div className="rounded-[28px] bg-gradient-to-br from-primary/10 via-white to-accent/10 p-6">
-        <div className="h-4 w-28 animate-pulse rounded-full bg-slate-200/80" />
-        <div className="mt-4 h-8 w-3/4 animate-pulse rounded-2xl bg-slate-200/80" />
-        <div className="mt-3 h-4 w-full animate-pulse rounded-full bg-slate-200/70" />
-        <div className="mt-2 h-4 w-5/6 animate-pulse rounded-full bg-slate-200/70" />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-[26px] border border-slate-200/70 bg-white/80 p-4 shadow-sm">
-          <div className="h-4 w-28 animate-pulse rounded-full bg-slate-200/80" />
-          <div className="mt-4 space-y-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="rounded-[20px] bg-slate-100/90 p-3">
-                <div className="h-4 w-2/3 animate-pulse rounded-full bg-slate-200/80" />
-                <div className="mt-3 h-3 w-full animate-pulse rounded-full bg-slate-200/70" />
-                <div className="mt-2 h-3 w-5/6 animate-pulse rounded-full bg-slate-200/70" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-[26px] border border-slate-200/70 bg-white/80 p-4 shadow-sm">
-          <div className="h-4 w-28 animate-pulse rounded-full bg-slate-200/80" />
-          <div className="mt-4 space-y-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="rounded-[18px] bg-slate-100/90 p-3">
-                <div className="h-4 w-1/2 animate-pulse rounded-full bg-slate-200/80" />
-                <div className="mt-2 h-3 w-full animate-pulse rounded-full bg-slate-200/70" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// PlannerResultPanel moved to src/components/PlannerResultPanel.tsx
 
 function buildPrintableTripHtml(result: TripPlannerResult): string {
   const itineraryMarkup = result.dailyItinerary
