@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight, Mail, MapPin, Phone } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 export default function ContactPage() {
   return (
@@ -59,6 +60,7 @@ export default function ContactPage() {
           </form>
         </section>
       </main>
+      <Analytics />
     </div>
   );
 }
