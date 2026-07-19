@@ -25,6 +25,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import type { LucideIcon } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 import Reveal from './components/Reveal';
 import PlanningModal, { type PlanningFormValues } from './components/PlanningModal';
 import TravelIllustration from './components/TravelIllustration';
@@ -1184,6 +1185,7 @@ function PlannerSkeleton() {
           </div>
         </div>
       </div>
+      <Analytics />
     </div>
   );
 }
