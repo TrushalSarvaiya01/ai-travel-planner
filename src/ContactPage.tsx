@@ -2,11 +2,19 @@ import React from 'react';
 import { ArrowRight, Mail, MapPin, Phone } from 'lucide-react';
 
 export default function ContactPage() {
+  
+
+  const navigateHome = () => {
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <div className="min-h-screen bg-hero-radial text-ink">
       <header className="section-shell py-8">
         <h1 className="text-4xl font-extrabold">Contact</h1>
         <p className="mt-3 text-sm text-slate-600">Get in touch — we'd love to hear about your trip plans.</p>
+        <button onClick={navigateHome} className="button-secondary mt-4" > ← Back Home </button>
       </header>
 
       <main className="section-shell grid gap-12 pb-24 md:grid-cols-2">

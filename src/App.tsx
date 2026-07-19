@@ -1038,7 +1038,7 @@ function App({ mode = 'home' }: AppProps) {
             <p className="mt-6 max-w-xl text-sm leading-7 text-slate-500">
               Built for people who want elegant trip planning, faster decisions, and a premium AI product experience.
             </p>
-            <p className="mt-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Copyright © 2025 Travel Planner AI</p>
+            <p className="mt-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Copyright © 2026 Travel Planner AI</p>
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2">
